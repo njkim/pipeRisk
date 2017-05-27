@@ -5,7 +5,7 @@ arcpy.env.overwriteOutput = True
 arcpy.env.workspace = "in_memory"
 
 path = "C:\\Temp\\Spring2017_WT_GeoDb.mdb"
-#path = "\\\\watis\\public\\InternsSpring2017\\Spring2017_WT_GeoDb.mdb"
+# path = "\\\\watis\\public\\InternsSpring2017\\Spring2017_WT_GeoDb.mdb"
 
 pipe = path + "\\Spring2017_WT\\WT_Pipe_main_surf"
 BS_School = path + "\\City Bench\\BS_School"
@@ -15,16 +15,16 @@ PL_MidtBndy = path + "\\Planning\\PL_MidtBndy"
 PL_TSA = path + "\\Planning\\PL_TSA"
 FC_FacAllSite_V = path + "\\Public Works\\FC_FacAllSite_V"
 
-PL_Business = "PL_Bisuness"
+PL_Business = "PL_Business"
 FC_FacAllSite_V_Facility = "FC_FacAllSite_V_Facility"
 FC_FacAllSite_V_Park = "FC_FacAllSite_V_Park"
 FC_FacAllSite_V_PumpStation = "FC_FacAllSite_V_PumpStation"
 pipe_layer = "pipe_layer"
 
+arcpy.Union_analysis([PL_MidtBndy, PL_TSA], PL_Business, "ALL", "", "GAPS")
 arcpy.Select_analysis(FC_FacAllSite_V, FC_FacAllSite_V_Facility, "[TYPE] = 'Facility'")
 arcpy.Select_analysis(FC_FacAllSite_V, FC_FacAllSite_V_Park, "[TYPE] = 'Park'")
 arcpy.Select_analysis(FC_FacAllSite_V, FC_FacAllSite_V_PumpStation, "[TYPE] = 'Pump Station'")
-arcpy.Union_analysis([PL_MidtBndy, PL_TSA], PL_Business, "ALL", "", "GAPS")
 
 print("creating pipe_layer...")
 arcpy.MakeFeatureLayer_management(pipe, pipe_layer)
@@ -44,10 +44,11 @@ arcpy.AddField_management(pipe_layer, "Likelihood", "FLOAT", "", "", "", "", "NU
 arcpy.AddField_management(pipe_layer, "Consequence", "FLOAT", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
 arcpy.AddField_management(pipe_layer, "Risk_Index", "SHORT", "", "", "", "", "NULLABLE", "NON_REQUIRED", "")
 
-# spatial analysis to calculate the risk factor according to the distance from a certain area
+""" spatial analysis to calculate the risk factor according to the distance from a certain area
+"""
 def distance(district_name, field_name):
     # a is a district name as a variable name, b is a field name as a string
-    print("calculating..." + field_name + "...")
+    print("calculating " + field_name + "...")
     arcpy.CalculateField_management(pipe_layer, field_name, "1", "PYTHON", "")
     arcpy.SelectLayerByLocation_management(pipe_layer, "WITHIN_A_DISTANCE", district_name, "1000 Feet", "NEW_SELECTION", "NOT_INVERT")
     arcpy.CalculateField_management(pipe_layer, field_name, "2", "PYTHON", "")
@@ -82,17 +83,87 @@ arcpy.SelectLayerByAttribute_management(pipe_layer, "CLEAR_SELECTION")
 
 # Pipe_Risk
 print("calculating Pipe_Risk...")
-arcpy.CalculateField_management(pipe_layer, "Risk_Pipe", "likelihood(!DIAMETER!, !MATERIAL!, !INSTALLATI!, !Z_Max!)", "PYTHON", "def likelihood(a,b,c,d):\\n# a = diamter, b = material, c = age, d = elevation\\n\\n    if a == None or b == None or c == None or a == 0 or b == \"\" or c == \"\" or b == \"UNK\":\\n       return None\\n    else:\\n        e = 0\\n\\n# diamter\\n    if a <= 10:\\n        e = e + 5\\n    elif a > 10 and a <=20:\\n        e = e + 4\\n    else:\\n        e = e + 3\\n\\n# material\\n    if b[0:1] == \"S\" or b==\"CIP\":\\n        e = e + 5\\n    elif b[0:2] == \"DI\":\\n        e = e + 4\\n    elif b == \"ACP\" or b == \"CIP\":\\n        e = e + 3\\n    elif b == \"RCP\":\\n        e = e + 2\\n    else:\\n        e = e + 1\\n\\n# age\\n    if c[0:3] == \"195\" or c[0:3] == \"196\":\\n        e = e + 4\\n    elif c[0:3] == \"197\" or c[0:3] == \"198\":\\n        e = e + 3\\n    elif c[0:3] == \"199\" or c[0:3] == \"200\":\\n        e = e + 2\\n    else:\\n        e = e + 1\\n\\n# elevation\\n    if d >= 100:\\n        e = e + 5\\n    else:\\n        e = e + 1\\n\\n    return e")
+pipeRisk_function = """
+def pipeRisk(a,b,c,d): # a = diameter, b = material, c = age, d = elevation
+    if a == None or b == None or c == None or a == 0 or b == '' or c == '' or b == 'UNK':  
+        return None
+    else:
+        e = 0
+# diameter
+    if a <= 10:
+        e = e + 5
+    elif a > 10 and a <=20:
+        e = e + 4
+    else:
+        e = e + 3
+# material
+    if b[0:1] == 'S' or b=='CIP':
+        e = e + 5
+    elif b[0:2] == 'DI':
+        e = e + 4
+    elif b == 'ACP' or b == 'CIP':
+        e = e + 3
+    elif b == 'RCP':
+        e = e + 2
+    else:
+        e = e + 1
+# age
+    if c[0:3] == '195' or c[0:3] == '196':
+        e = e + 4
+    elif c[0:3] == '197' or c[0:3] == '198':
+        e = e + 3
+    elif c[0:3] == '199' or c[0:3] == '200':
+        e = e + 2
+    else:
+        e = e + 1
+# elevation
+    if d >= 100:
+        e = e + 5
+    else:
+        e = e + 1
+    return e
+"""
+arcpy.CalculateField_management(pipe_layer, "Risk_Pipe", "pipeRisk(!DIAMETER!, !MATERIAL!, !INSTALLATI!, !Z_Max!)", "PYTHON", pipeRisk_function)
 
 # Diameter
 print("calculating Risk_Diameter...")
-arcpy.CalculateField_management(pipe_layer, "Risk_Diameter", "diameter(!DIAMETER!)", "PYTHON", "def diameter(a):\\n# a = diamter\\n\\n    if a == None:\\n       return None\\n\\n# diamter\\n    if a <= 10:\\n        return 1\\n    elif a > 10 and a <=16:\\n        return 2\\n    elif a > 16 and a <=36:\\n        return 3\\n    else:\\n        return 5")
+diameter_function = """
+def diameter(a): # a = diameter
+    if a == None:
+        return None
+    elif a <= 10:
+        return 1
+    elif a > 10 and a <=16:
+        return 2
+    elif a > 16 and a <=36:
+        return 3
+    else:
+        return 5
+"""
+arcpy.CalculateField_management(pipe_layer, "Risk_Diameter", "diameter(!DIAMETER!)", "PYTHON", diameter_function)
 
 # Consequences
 print("calculating Likelihood, Consequence, and Risk_Index...")
-arcpy.CalculateField_management(pipe_layer, "Consequence", "(!Risk_Facility! *4 + !Risk_PumpStation! *5 + !Risk_Park! *2 + !Risk_School! *4 + !Risk_Business! *4 + !Risk_Creek! *5 + !Risk_Diameter! *5)*10./145", "PYTHON", "")
-arcpy.CalculateField_management(pipe_layer, "Likelihood", "PipeRisk(!Risk_Pipe!, !Risk_TruckRoute!)", "PYTHON", "def PipeRisk(a,b):\\n# a: pipe risk (20), b: truck route (5)\\n    if a == None:\\n        return None\\n    else:\\n        return (a+b)/2.5")
-arcpy.CalculateField_management(pipe_layer, "Risk_Index", "RiskIndex( !Consequence!, !Likelihood! )", "PYTHON", "def RiskIndex(a,b):\\n    if a == None or b == None:\\n        return None\\n    else:\\n        return (a*b)")
+Consequence_function = """
+(!Risk_Facility! *4 + !Risk_PumpStation! *5 + !Risk_Park! *2 + !Risk_School! *4 + !Risk_Business! *4 + !Risk_Creek! *5 + !Risk_Diameter! *5)* 10./145
+"""
+Likelihood_function = """
+def likelihood(a,b): # a: pipe risk (20), b: truck route (5)
+    if a == None:        
+        return None    
+    else:        
+        return (a + b)/2.5
+"""
+RiskIndex_function = """
+def riskIndex(a,b):
+    if a == None or b == None:        
+        return None
+    else:
+        return (a * b)
+"""
+arcpy.CalculateField_management(pipe_layer, "Consequence", Consequence_function, "PYTHON", "")
+arcpy.CalculateField_management(pipe_layer, "Likelihood", "likelihood(!Risk_Pipe!, !Risk_TruckRoute!)", "PYTHON", Likelihood_function)
+arcpy.CalculateField_management(pipe_layer, "Risk_Index", "riskIndex( !Consequence!, !Likelihood! )", "PYTHON", RiskIndex_function)
 
 # Clearing IN_MEMORY space
 arcpy.Delete_management("in_memory")
